@@ -2,6 +2,8 @@
 
 A multi-agent crypto trading arena where AI agents compete against each other using live crypto market data from Coinbase. Each agent consumes a livestream of market data, has access to its portfolio and calculator, and executes trades autonomously: coordinated through Calfkit's agent design.
 
+<br>
+
 ## Architecture
 
 ```
@@ -31,12 +33,16 @@ Key design points:
 - **Shared tools via ToolContext**: A single deployed set of trading tools serves all agents — each tool resolves the calling agent's identity at runtime.
 - **Dynamic agent accounts**: Agents appear on the dashboard automatically on their first trade — no pre-registration needed.
 
+<br>
+
 ## Prerequisites
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) — fast Python package manager
-- A running Kafka broker (see [Calfkit docs](https://github.com/calf-ai/calf-sdk) for setup)
+- Docker installed and running (for the Kafka broker)
 - An API key (and optionally base url) for your LLM provider
+
+<br>
 
 ### Install uv
 
@@ -55,9 +61,19 @@ brew install uv
 
 After installation, restart your terminal.
 
-### Start the broker
-- The broker is what orchestrates all the agents and allows for realtime data streaming between all components
-- Follow instructions for broker setup here (see [Calfkit docs](https://github.com/calf-ai/calf-sdk) for setup)
+<br>
+
+### Start the Kafka broker
+
+The broker orchestrates all agents and enables realtime data streaming between all components. Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
+
+```bash
+git clone https://github.com/calf-ai/calfkit-broker && cd calfkit-broker && make dev-up
+```
+
+Once the broker is ready, open a new terminal tab to continue with the quickstart. The default broker address is `localhost:9092`.
+
+<br>
 
 ## Quickstart
 
@@ -69,9 +85,9 @@ uv sync
 
 Then launch each component in its own terminal. All components will access the same Kafka broker.
 
+<br>
+
 ### 1. Start the Coinbase connector
-
-
 
 ```bash
 uv run python coinbase_connector.py --bootstrap-servers <broker-url>
@@ -79,11 +95,15 @@ uv run python coinbase_connector.py --bootstrap-servers <broker-url>
 
 Optional: You can use the `--interval <seconds>` flag which controls how often agents are fed market data (default: 60s). Note that candle data is only updated every 60 seconds due to Coinbase API restrictions, so intervals below a minute mean agents will receive updated live pricing (bid/ask spread, ~5s granularity) but the same candle data.
 
+<br>
+
 ### 2. Deploy tools & dashboard
 
 ```bash
 uv run python tools_and_dashboard.py --bootstrap-servers <broker-url>
 ```
+
+<br>
 
 ### 3. Deploy a ChatNode (LLM inference)
 
@@ -102,6 +122,8 @@ uv run python deploy_chat_node.py \
     --base-url <llm-provider-base-url> --reasoning-effort <optional-reasoning-level> --api-key <api-key>
 ```
 
+<br>
+
 ### 4. Deploy agent routers
 
 Deploy one router per agent. Each targets a ChatNode you define by name and uses a trading strategy you can edit in `deploy_router_node.py`. See `deploy_router_node.py` for the full system prompts.
@@ -114,6 +136,8 @@ uv run python deploy_router_node.py \
 
 Once agent routers are deployed, market data flows to them agents and trades appear on the dashboard.
 
+<br>
+
 ### 5. (Optional) Start the response viewer
 
 A live dashboard that shows all agent activity — tool calls, text responses, and tool results — as they happen.
@@ -122,30 +146,15 @@ A live dashboard that shows all agent activity — tool calls, text responses, a
 uv run python response_viewer.py --bootstrap-servers <broker-url>
 ```
 
+<br>
+
 ## CLI Reference
 
-### deploy_chat_node.py
+For full CLI flags and options, see [CLI_REFERENCE.md](CLI_REFERENCE.md).
 
-| Flag | Required | Default | Description |
-|------|----------|---------|-------------|
-| `--name` | Yes | — | ChatNode name (becomes topic `ai_prompted.<name>`) |
-| `--model-id` | Yes | — | Model ID (e.g. `gpt-5-nano`, `deepseek-chat`) |
-| `--bootstrap-servers` | Yes | — | Kafka broker address |
-| `--base-url` | No | OpenAI | Base URL for OpenAI-compatible providers |
-| `--api-key` | No | `$OPENAI_API_KEY` | API key for the provider |
-| `--max-workers` | No | `1` | Concurrent inference workers |
-| `--reasoning-effort` | No | `None` | For reasoning models (e.g. `"low"`) |
+<br>
 
-### deploy_router_node.py
-
-| Flag | Required | Default | Description |
-|------|----------|---------|-------------|
-| `--name` | Yes | — | Agent name (consumer group + identity) |
-| `--chat-node-name` | Yes | — | Name of the deployed ChatNode to target |
-| `--strategy` | Yes | — | Trading strategy: `default`, `momentum`, `brainrot`, or `scalper` |
-| `--bootstrap-servers` | Yes | — | Kafka broker address |
-
-## Available Tools
+## Available Agent Tools
 
 | Tool | Description |
 |------|-------------|
@@ -153,10 +162,11 @@ uv run python response_viewer.py --bootstrap-servers <broker-url>
 | `get_portfolio` | View cash, open positions, cost basis, P&L, and average time held |
 | `calculator` | Evaluate math expressions for position sizing, P&L calculations, etc. |
 
-## Configuration
+<br>
+
+## Deployment Configurations
 
 | File | Constant | Default | Description |
 |------|----------|---------|-------------|
 | `trading_tools.py` | `INITIAL_CASH` | `100_000.0` | Starting cash balance per agent |
 | `coinbase_kafka_connector.py` | `DEFAULT_PRODUCTS` | 3 products | Products tracked by the price feed |
-
