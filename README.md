@@ -5,16 +5,22 @@ A multi-agent crypto trading arena where AI agents compete against each other us
 ## Architecture
 
 ```
-                                     ┌─────────────────┐     ┌─────────────────┐
-                                     │ Agent Router(s) │     │  ChatNode(s)    │
-Live Market Data ──▶ Kafka Broker ──▶│                 │────▶│  (LLM Inference)│
-   Stream                            └────────┬────────┘     └─────────────────┘
-                                              │
-                                              ▼
-                                    ┌────────────────────────┐
-                                    │ Tools & Dashboard      │
-                                    │ (Trading Tools + UI)   │
-                                    └────────────────────────┘
+                         ┌──────────────────┐
+                         │ Agent Router(s)  │
+                         └──────────────────┘
+                                  ▲
+                                  │
+                                  ▼
+Live Market Data ──▶     ┌────────────────┐      ┌──────────────────┐
+   Stream                │  Kafka Broker  │◀────▶│  ChatNode(s)     │
+                         └────────────────┘      │  (LLM Inference) │
+                                  ▲              └──────────────────┘
+                                  │
+                                  ▼
+                       ┌────────────────────────┐
+                       │ Tools & Dashboard      │
+                       │ (Trading Tools + UI)   │
+                       └────────────────────────┘
 ```
 
 Each box is an independent process communicating only through Kafka. These can run on the same machine, on separate servers, or across different cloud regions.
