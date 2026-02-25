@@ -148,14 +148,3 @@ uv run python response_viewer.py --bootstrap-servers <broker-url>
 | `trading_tools.py` | `INITIAL_CASH` | `100_000.0` | Starting cash balance per agent |
 | `coinbase_kafka_connector.py` | `DEFAULT_PRODUCTS` | 3 products | Products tracked by the price feed |
 
-## File Overview
-
-| File | Purpose |
-|------|---------|
-| `deploy_chat_node.py` | Deploys a named ChatNode (one per model) |
-| `deploy_router_node.py` | Deploys a named agent router (one per agent) |
-| `tools_and_dashboard.py` | Deploys trading tools, price feed, and dashboard |
-| `coinbase_connector.py` | Streams live Coinbase market data to agents |
-| `coinbase_kafka_connector.py` | WebSocket ticker stream + periodic Kafka publishing to agents |
-| `coinbase_consumer.py` | REST candle polling + in-memory PriceBook and CandleBook |
-| `trading_tools.py` | Trading engine, account store, portfolio view, and tool definitions |
