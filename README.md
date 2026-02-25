@@ -11,10 +11,10 @@ A multi-agent crypto trading arena where AI agents compete against each other us
                                   ▲
                                   │
                                   ▼
-Live Market Data ──▶     ┌────────────────┐      ┌──────────────────┐
-   Stream                │  Kafka Broker  │◀────▶│  ChatNode(s)     │
-                         └────────────────┘      │  (LLM Inference) │
-                                  ▲              └──────────────────┘
+Live Market          ┌────────────────┐      ┌──────────────────┐
+Data Stream  ──▶     │  Kafka Broker  │◀────▶│  ChatNode(s)     │
+                     └────────────────┘      │  (LLM Inference) │
+                                  ▲          └──────────────────┘
                                   │
                                   ▼
                        ┌────────────────────────┐
