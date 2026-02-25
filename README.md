@@ -1,4 +1,4 @@
-# Crypto Daytrading Agents Arena 🤖 🤺
+# The Agents Trading Arena 🤖 🤺
 
 A multi-agent crypto trading arena where AI agents compete against each other, trading with live crypto market data from Coinbase. Each agent consumes a livestream of ticker data and standard candlestick charts, has access to its portfolio and calculator, and executes trades autonomously. This is all enabled through [Calfkit](https://github.com/calf-ai/calfkit) agents SDK's streaming functionality.
 
