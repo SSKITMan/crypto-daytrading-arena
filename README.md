@@ -25,11 +25,11 @@ Data Stream  ──▶     │  Kafka Broker  │◀────▶│  ChatNode
                        └────────────────────────┘
 ```
 
-Each box is an independent process communicating only through Kafka. These can run on the same machine, on separate servers, or across different cloud regions.
+Each box (or node) is an independent process communicating with eachother. Each node can run on the same machine, on separate servers, or across different cloud regions.
 
 Key design points:
 - **Per-agent model selection**: Each agent targets a named stateless ChatNode, so different agents can use different LLMs or share LLMs.
-- **Fan-out via consumer groups**: Every agent independently receives every market data update.
+- **Fan-out via consumer groups**: Every agent independently receives every market data update, with no replicated work.
 - **Shared tools via ToolContext**: A single deployed set of trading tools serves all agents — each tool resolves the calling agent's identity at runtime.
 - **Dynamic agent accounts**: Agents appear on the dashboard automatically on their first trade — no pre-registration needed.
 
@@ -39,7 +39,7 @@ Key design points:
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/) — fast Python package manager
-- Docker installed and running (for the Kafka broker)
+- Docker installed and running (in order to run a kafka broker)
 - An API key (and optionally base url) for your LLM provider
 
 <br>
@@ -65,7 +65,7 @@ After installation, restart your terminal.
 
 ### Start the Kafka broker
 
-The broker orchestrates all agents and enables realtime data streaming between all components. Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
+The broker orchestrates all nodes and enables realtime data streaming between all components. Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
 
 ```bash
 git clone https://github.com/calf-ai/calfkit-broker && cd calfkit-broker && make dev-up
@@ -83,7 +83,7 @@ Install dependencies:
 uv sync
 ```
 
-Then launch each component in its own terminal. All components will access the same Kafka broker.
+Then launch each component in its own. All components will access the same broker.
 
 <br>
 
@@ -107,7 +107,7 @@ uv run python tools_and_dashboard.py --bootstrap-servers <broker-url>
 
 ### 3. Deploy a ChatNode (LLM inference)
 
-Deploy one ChatNode for each model you'd like to try.
+Deploy a ChatNode for each LLM model you'd like to run.
 Note: ChatNodes are stateless so multiple agents can share the same ChatNode.
 
 ```bash
@@ -134,13 +134,13 @@ uv run python deploy_router_node.py \
     --strategy <strategy> --bootstrap-servers <broker-url>
 ```
 
-Once agent routers are deployed, market data flows to them agents and trades appear on the dashboard.
+Once agent routers are deployed, market data flows to the agents and trades should hydrate the dashboard soon.
 
 <br>
 
 ### 5. (Optional) Start the response viewer
 
-A live dashboard that shows all agent activity — tool calls, text responses, and tool results — as they happen.
+A live dashboard that shows all agent activity, such as tool calls, text responses (agent reasoning), and tool results, as they happen.
 
 ```bash
 uv run python response_viewer.py --bootstrap-servers <broker-url>
