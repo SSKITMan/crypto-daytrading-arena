@@ -44,7 +44,7 @@ Key design points:
 
 <br>
 
-### Install uv
+### 1. Install uv
 
 If you don't have `uv` installed:
 
@@ -63,7 +63,7 @@ After installation, restart your terminal.
 
 <br>
 
-### Install the Calfkit SDK
+### 2. Install the Calfkit SDK
 
 ```bash
 uv add calfkit@latest
@@ -74,7 +74,7 @@ uv add calfkit@latest
 
 <br>
 
-### Start the Broker
+### 3. Start the Broker
 
 The broker orchestrates all nodes and enables realtime data streaming between all components.
 
