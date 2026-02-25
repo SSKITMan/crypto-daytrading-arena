@@ -1,6 +1,6 @@
 # Crypto Daytrading Agents Arena 🤖 🤺
 
-A multi-agent crypto trading arena where AI agents compete against each other using live crypto market data from Coinbase. Each agent consumes a livestream of market data, has access to its portfolio and calculator, and executes trades autonomously: coordinated through Calfkit's agent design.
+A multi-agent crypto trading arena where AI agents compete against each other using live crypto market data from Coinbase. Each agent consumes a livestream of market data, has access to its portfolio and calculator, and executes trades autonomously, enabled through [Calfkit](https://github.com/calf-ai/calfkit) agents SDK's streaming functionality.
 
 <br>
 
@@ -63,6 +63,17 @@ After installation, restart your terminal.
 
 <br>
 
+### Install the Calfkit SDK
+
+```bash
+uv add calfkit@latest
+# python -m venv .venv && source .venv/bin/activate && pip install --upgrade calfkit
+```
+
+[Calfkit](https://github.com/calf-ai/calfkit) is the event-stream SDK that powers this project. It handles the agent realtime stream consumption and orechestration.
+
+<br>
+
 ### Start the Kafka broker
 
 The broker orchestrates all nodes and enables realtime data streaming between all components. Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
@@ -81,6 +92,7 @@ Install dependencies:
 
 ```bash
 uv sync
+# pip install -r requirements.txt
 ```
 
 Then launch each component in its own. All components will access the same broker.
@@ -91,6 +103,7 @@ Then launch each component in its own. All components will access the same broke
 
 ```bash
 uv run python coinbase_connector.py --bootstrap-servers <broker-url>
+# source .venv/bin/activate && python coinbase_connector.py --bootstrap-servers <broker-url>
 ```
 
 Optional: You can use the `--interval <seconds>` flag which controls how often agents are fed market data (default: 60s). Note that candle data is only updated every 60 seconds due to Coinbase API restrictions, so intervals below a minute mean agents will receive updated live pricing (bid/ask spread, ~5s granularity) but the same candle data.
@@ -101,6 +114,7 @@ Optional: You can use the `--interval <seconds>` flag which controls how often a
 
 ```bash
 uv run python tools_and_dashboard.py --bootstrap-servers <broker-url>
+# source .venv/bin/activate && python tools_and_dashboard.py --bootstrap-servers <broker-url>
 ```
 
 <br>
@@ -120,6 +134,10 @@ uv run python deploy_chat_node.py \
 uv run python deploy_chat_node.py \
     --name <unique-name-of-chatnode> --model-id <model-id> --bootstrap-servers <broker-url> \
     --base-url <llm-provider-base-url> --reasoning-effort <optional-reasoning-level> --api-key <api-key>
+
+# source .venv/bin/activate && python deploy_chat_node.py \
+#     --name <unique-name-of-chatnode> --model-id <model-id> --bootstrap-servers <broker-url> \
+#     --api-key <api-key>
 ```
 
 <br>
@@ -132,6 +150,10 @@ Deploy one router per agent. Each targets a ChatNode you define by name and uses
 uv run python deploy_router_node.py \
     --name <unique-agent-name> --chat-node-name <name-of-chatnode> \
     --strategy <strategy> --bootstrap-servers <broker-url>
+
+# source .venv/bin/activate && python deploy_router_node.py \
+#     --name <unique-agent-name> --chat-node-name <name-of-chatnode> \
+#     --strategy <strategy> --bootstrap-servers <broker-url>
 ```
 
 Once agent routers are deployed, market data flows to the agents and trades should hydrate the dashboard soon.
@@ -144,6 +166,7 @@ A live dashboard that shows all agent activity, such as tool calls, text respons
 
 ```bash
 uv run python response_viewer.py --bootstrap-servers <broker-url>
+# source .venv/bin/activate && python response_viewer.py --bootstrap-servers <broker-url>
 ```
 
 <br>
