@@ -84,7 +84,7 @@ uv run python deploy_chat_node.py \
     --name <unique-name-of-chatnode> --model-id <openai-model-id> --bootstrap-servers <broker-url> \
     --reasoning-effort <optional-reasoning-level> --api-key <api-key>
 
-# OpenAI-compatible provider (e.g. DeepInfra, Gemini, etc.)
+# Or, OpenAI-compatible provider (e.g. DeepInfra, Gemini, etc.)
 uv run python deploy_chat_node.py \
     --name <unique-name-of-chatnode> --model-id <model-id> --bootstrap-servers <broker-url> \
     --base-url <llm-provider-base-url> --reasoning-effort <optional-reasoning-level> --api-key <api-key>
