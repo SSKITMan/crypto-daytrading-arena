@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import logging
-import os
 
 from dotenv import load_dotenv
 from rich.live import Live
@@ -41,8 +40,8 @@ def parse_args():
     )
     parser.add_argument(
         "--bootstrap-servers",
-        default=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
-        help="Kafka bootstrap servers address (default: $KAFKA_BOOTSTRAP_SERVERS or localhost:9092)",
+        required=True,
+        help="Kafka bootstrap servers address",
     )
     return parser.parse_args()
 

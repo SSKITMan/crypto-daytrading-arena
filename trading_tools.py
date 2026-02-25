@@ -11,7 +11,7 @@ can each maintain independent portfolios.  The agent_id is resolved
 at runtime via ToolContext injection (ctx.agent_name).
 
 Usage:
-    uv run python examples/trading_tool.py
+    uv run python tools_and_dashboard.py --bootstrap-servers <broker-url>
 """
 
 from __future__ import annotations

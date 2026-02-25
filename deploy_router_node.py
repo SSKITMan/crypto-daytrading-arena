@@ -6,11 +6,13 @@ The ``--chat-node-name`` flag targets a specific named ChatNode for LLM
 inference.
 
 Example:
-    uv run python examples/daytrading_agents_arena/deploy_router_node.py \
-        --name momentum --chat-node-name gpt5-nano --strategy momentum
+    uv run python deploy_router_node.py \
+        --name momentum --chat-node-name gpt5-nano --strategy momentum \
+        --bootstrap-servers <broker-url>
 
-    uv run python examples/daytrading_agents_arena/deploy_router_node.py \
-        --name brainrot-daytrader --chat-node-name deepseek --strategy brainrot
+    uv run python deploy_router_node.py \
+        --name brainrot-daytrader --chat-node-name deepseek --strategy brainrot \
+        --bootstrap-servers <broker-url>
 """
 
 import argparse

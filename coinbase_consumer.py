@@ -8,7 +8,7 @@ Also provides a REST-polling alternative (``poll_rest``) that fetches
 1-minute OHLCV candles + current prices from the Coinbase REST API.
 
 Usage:
-    uv run python examples/coinbase_consumer.py
+    uv run python coinbase_consumer.py
 """
 
 import asyncio
@@ -27,15 +27,6 @@ logger = logging.getLogger(__name__)
 
 COINBASE_WS_URL = "wss://ws-feed.exchange.coinbase.com"
 COINBASE_REST_BASE = "https://api.exchange.coinbase.com"
-
-PRODUCTS = [
-    "BTC-USD",
-    "FARTCOIN-USD",
-    "SOL-USD",
-    "XRP-USD",
-    "DOGE-USD",
-    "FARTCOIN-USD",
-]
 
 
 class PriceBook:
@@ -77,7 +68,9 @@ class PriceBook:
         )
         print(f"  {'-' * 74}")
 
-        for product_id in PRODUCTS:
+        from coinbase_kafka_connector import DEFAULT_PRODUCTS
+
+        for product_id in DEFAULT_PRODUCTS:
             entry = self._book.get(product_id)
             if entry is None:
                 print(f"  {product_id:<14} {'--':>12}")
@@ -127,7 +120,8 @@ TIMEFRAMES = [
 
 
 class CandleBook:
-    """Maintains multi-timeframe OHLCV candles per product from the Coinbase REST API."""
+    """Maintains multi-timeframe OHLCV candles
+    per product from the Coinbase REST API."""
 
     def __init__(self) -> None:
         # Keyed by (product_id, granularity_seconds)
@@ -136,7 +130,8 @@ class CandleBook:
     def update_from_api(self, product_id: str, granularity: int, raw_candles: list[list]) -> None:
         """Parse Coinbase REST candle response and replace stored candles.
 
-        Coinbase returns arrays of ``[timestamp, low, high, open, close, volume]``
+        Coinbase returns arrays of
+        ``[timestamp, low, high, open, close, volume]``
         in *descending* time order.
         """
         candles = [
@@ -174,6 +169,8 @@ class CandleBook:
 
 
 async def consume(price_book: PriceBook) -> None:
+    from coinbase_kafka_connector import DEFAULT_PRODUCTS
+
     while True:
         try:
             async with websockets.connect(COINBASE_WS_URL) as ws:
@@ -181,13 +178,13 @@ async def consume(price_book: PriceBook) -> None:
                     json.dumps(
                         {
                             "type": "subscribe",
-                            "product_ids": PRODUCTS,
+                            "product_ids": DEFAULT_PRODUCTS,
                             "channels": ["ticker_batch"],
                         }
                     )
                 )
 
-                print(f"Connected. Subscribed to {len(PRODUCTS)} products.")
+                print(f"Connected. Subscribed to {len(DEFAULT_PRODUCTS)} products.")
                 print("Waiting for data (updates every ~5s)...\n")
 
                 async for raw in ws:

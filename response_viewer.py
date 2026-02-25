@@ -6,8 +6,8 @@ Run this in a separate terminal alongside the main tools_and_dashboard
 to get visibility into agent reasoning.
 
 Example:
-    uv run python examples/daytrading_agents_arena/response_viewer.py \
-        --bootstrap-servers 46.225.138.55:9092
+    uv run python response_viewer.py \
+        --bootstrap-servers <broker-url>
 
 Prerequisites:
     - Kafka broker running

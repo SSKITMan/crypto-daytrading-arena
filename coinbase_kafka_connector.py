@@ -6,12 +6,12 @@ for each price update (fire-and-forget).
 Uses the ticker_batch channel for ~5-second batched price updates.
 
 Usage:
-    uv run python examples/coinbase_kafka_connector.py
+    uv run python coinbase_kafka_connector.py
     KAFKA_BOOTSTRAP_SERVERS=broker:9092 \
-        uv run python examples/coinbase_kafka_connector.py
-    uv run python examples/coinbase_kafka_connector.py \
+        uv run python coinbase_kafka_connector.py
+    uv run python coinbase_kafka_connector.py \
         --products BTC-USD ETH-USD SOL-USD
-    uv run python examples/coinbase_kafka_connector.py \
+    uv run python coinbase_kafka_connector.py \
         --min-interval 30
 
 Prerequisites:
