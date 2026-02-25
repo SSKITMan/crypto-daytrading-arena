@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import os
@@ -27,8 +28,22 @@ from coinbase_kafka_connector import (
 
 load_dotenv()
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-MIN_PUBLISH_INTERVAL = 60.0
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Stream live Coinbase market data to deployed agents.",
+    )
+    parser.add_argument(
+        "--bootstrap-servers",
+        default=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        help="Kafka bootstrap servers address (default: $KAFKA_BOOTSTRAP_SERVERS or localhost:9092)",
+    )
+    parser.add_argument(
+        "--interval",
+        type=float,
+        default=60.0,
+        help="Minimum publish interval in seconds between market data updates to agents (default: 60)",
+    )
+    return parser.parse_args()
 
 
 async def main():
@@ -38,12 +53,14 @@ async def main():
         datefmt="%H:%M:%S",
     )
 
+    args = parse_args()
+
     print("=" * 50)
     print("Coinbase Connector Deployment")
     print("=" * 50)
 
-    print(f"\nConnecting to Kafka broker at {KAFKA_BOOTSTRAP_SERVERS}...")
-    broker = BrokerClient(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+    print(f"\nConnecting to Kafka broker at {args.bootstrap_servers}...")
+    broker = BrokerClient(bootstrap_servers=args.bootstrap_servers)
 
     # Reference router node for topic routing.
     # tool_nodes=None so the deployed routers use their own tools.
@@ -51,7 +68,7 @@ async def main():
 
     print(f"  Router topic: {router_node.subscribed_topic}")
     print(f"  Products: {', '.join(DEFAULT_PRODUCTS)}")
-    print(f"  Min publish interval: {MIN_PUBLISH_INTERVAL}s")
+    print(f"  Min publish interval: {args.interval}s")
 
     candle_book = CandleBook()
 
@@ -59,7 +76,7 @@ async def main():
         broker=broker,
         router_node=router_node,
         products=DEFAULT_PRODUCTS,
-        min_publish_interval=MIN_PUBLISH_INTERVAL,
+        min_publish_interval=args.interval,
         candle_book=candle_book,
     )
 

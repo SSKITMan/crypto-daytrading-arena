@@ -1,32 +1,51 @@
 # Crypto Daytrading Agents Arena
 
-A distributed multi-agent trading arena where AI agents compete against each other using live cryptocurrency market data from Coinbase. Each agent receives the same real-time market updates, reasons about its portfolio using an LLM, and executes trades autonomously — all coordinated through Calfkit's event-driven architecture.
+A multi-agent crypto trading arena where AI agents compete against each other using live crypto market data from Coinbase. Each agent consumes a livestream of market data, has access to its portfolio and calculator, and executes trades autonomously: coordinated through Calfkit's event-driven architecture.
 
 ## Architecture
 
 ```
-Coinbase WebSocket + REST API
-        │
-        ▼
-CoinbaseKafkaConnector ──▶ Kafka ──▶ Agent Router(s) ──▶ ChatNode(s) (LLM)
-                                                │
-                                                ▼
-                                          Trading Tools ──▶ Dashboard
+Live Market Data ──▶ Kafka ──▶ Agent Router(s) ──▶ ChatNode(s) (LLM)
+                                       │
+                                       ▼
+                                 Trading Tools ──▶ Dashboard
 ```
 
-Each box is an independent process communicating only through Kafka. They can run on the same machine, on separate servers, or across different cloud regions.
+Each box is an independent process communicating only through Kafka. These can run on the same machine, on separate servers, or across different cloud regions.
 
 Key design points:
-- **Per-agent model selection**: Each agent targets a named ChatNode, so different agents can use different LLMs.
+- **Per-agent model selection**: Each agent targets a named stateless ChatNode, so different agents can use different LLMs or share LLMs.
 - **Fan-out via consumer groups**: Every agent independently receives every market data update.
-- **Shared tools via ToolContext**: A single set of trading tools serves all agents — each tool resolves the calling agent's identity at runtime.
+- **Shared tools via ToolContext**: A single deployed set of trading tools serves all agents — each tool resolves the calling agent's identity at runtime.
 - **Dynamic agent accounts**: Agents appear on the dashboard automatically on their first trade — no pre-registration needed.
 
 ## Prerequisites
 
 - Python 3.10+
+- [uv](https://docs.astral.sh/uv/) — fast Python package manager
 - A running Kafka broker (see [Calfkit docs](https://github.com/calf-ai/calf-sdk) for setup)
-- An API key for your LLM provider
+- An API key (and optionally base url) for your LLM provider
+
+### Install uv
+
+If you don't have `uv` installed:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+
+# Or via Homebrew
+brew install uv
+```
+
+After installation, restart your terminal.
+
+### Start the broker
+- The broker is what orchestrates all the agents and allows for realtime data streaming between all components
+- Follow instructions for broker setup here (see [Calfkit docs](https://github.com/calf-ai/calf-sdk) for setup)
 
 ## Quickstart
 
@@ -36,53 +55,60 @@ Install dependencies:
 uv sync
 ```
 
-Then launch each component in its own terminal. All components need access to the same Kafka broker.
+Then launch each component in its own terminal. All components will access the same Kafka broker.
 
-### 1. Deploy a ChatNode (LLM inference)
+### 1. Start the Coinbase connector
 
-Deploy one ChatNode per model. Multiple agents can share the same ChatNode.
+
+
+```bash
+uv run python coinbase_connector.py --bootstrap-servers <broker-url>
+```
+
+Optional: You can use the `--interval <seconds>` flag which controls how often agents are fed market data (default: 60s). Note that candle data is only updated every 60 seconds due to Coinbase API restrictions, so intervals below a minute mean agents will receive updated live pricing (bid/ask spread, ~5s granularity) but the same candle data.
+
+### 2. Deploy tools & dashboard
+
+```bash
+uv run python tools_and_dashboard.py --bootstrap-servers <broker-url>
+```
+
+### 3. Deploy a ChatNode (LLM inference)
+
+Deploy one ChatNode for each model you'd like to try.
+Note: ChatNodes are stateless so multiple agents can share the same ChatNode.
 
 ```bash
 # OpenAI model
 uv run python deploy_chat_node.py \
-    --name gpt5-nano --model-id gpt-5-nano --bootstrap-servers <broker> \
-    --reasoning-effort low
+    --name <unique-name-of-chatnode> --model-id <openai-model-id> --bootstrap-servers <broker-url> \
+    --reasoning-effort <optional-reasoning-level> --api-key <api-key>
 
-# OpenAI-compatible provider (e.g. DeepInfra)
+# OpenAI-compatible provider (e.g. DeepInfra, Gemini, etc.)
 uv run python deploy_chat_node.py \
-    --name minimax --model-id MiniMaxAI/MiniMax-M2.5 --bootstrap-servers <broker> \
-    --base-url https://api.deepinfra.com/v1/openai --api-key <key>
+    --name <unique-name-of-chatnode> --model-id <model-id> --bootstrap-servers <broker-url> \
+    --base-url <llm-provider-base-url> --reasoning-effort <optional-reasoning-level> --api-key <api-key>
 ```
 
-### 2. Deploy agent routers
+### 4. Deploy agent routers
 
-Deploy one router per agent. Each targets a ChatNode by name and uses a trading strategy. See `deploy_router_node.py` for the full system prompts.
+Deploy one router per agent. Each targets a ChatNode you define by name and uses a trading strategy you can edit in `deploy_router_node.py`. See `deploy_router_node.py` for the full system prompts.
 
 ```bash
 uv run python deploy_router_node.py \
-    --name agent-gpt5-nano --chat-node-name gpt5-nano --strategy default \
-    --bootstrap-servers <broker>
-
-uv run python deploy_router_node.py \
-    --name agent-minimax --chat-node-name minimax --strategy momentum \
-    --bootstrap-servers <broker>
+    --name <unique-agent-name> --chat-node-name <name-of-chatnode> \
+    --strategy <strategy> --bootstrap-servers <broker-url>
 ```
 
-### 3. Deploy tools & dashboard
+Once agent routers are deployed, market data flows to them agents and trades appear on the dashboard.
+
+### 5. (Optional) Start the response viewer
+
+A live dashboard that shows all agent activity — tool calls, text responses, and tool results — as they happen.
 
 ```bash
-uv run python tools_and_dashboard.py
+uv run python response_viewer.py --bootstrap-servers <broker-url>
 ```
-
-Reads `KAFKA_BOOTSTRAP_SERVERS` from your `.env` file or environment.
-
-### 4. Start the Coinbase connector
-
-```bash
-uv run python coinbase_connector.py
-```
-
-Once the connector starts, market data flows to all agents and trades appear on the dashboard.
 
 ## CLI Reference
 

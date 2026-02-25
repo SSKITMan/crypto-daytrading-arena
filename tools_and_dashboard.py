@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import os
@@ -33,7 +34,17 @@ from trading_tools import (
 
 load_dotenv()
 
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Deploy trading tools, price feed, and dashboard.",
+    )
+    parser.add_argument(
+        "--bootstrap-servers",
+        default=os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+        help="Kafka bootstrap servers address (default: $KAFKA_BOOTSTRAP_SERVERS or localhost:9092)",
+    )
+    return parser.parse_args()
 
 
 async def main():
@@ -43,12 +54,14 @@ async def main():
         datefmt="%H:%M:%S",
     )
 
+    args = parse_args()
+
     print("=" * 50)
     print("Tools & Price Feed Deployment")
     print("=" * 50)
 
-    print(f"\nConnecting to Kafka broker at {KAFKA_BOOTSTRAP_SERVERS}...")
-    broker = BrokerClient(bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+    print(f"\nConnecting to Kafka broker at {args.bootstrap_servers}...")
+    broker = BrokerClient(bootstrap_servers=args.bootstrap_servers)
     service = NodesService(broker)
 
     # ── Tool nodes ───────────────────────────────────────────────
