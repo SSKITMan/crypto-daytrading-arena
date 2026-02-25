@@ -74,15 +74,29 @@ uv add calfkit@latest
 
 <br>
 
-### Start the Kafka broker
+### Start the Broker
 
-The broker orchestrates all nodes and enables realtime data streaming between all components. Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
+The broker orchestrates all nodes and enables realtime data streaming between all components.
+
+<details>
+<summary><strong>Option A: Local broker setup (Docker required)</strong></summary>
+
+Run the following to clone the [calfkit-broker](https://github.com/calf-ai/calfkit-broker) repo and start a local Kafka broker container:
 
 ```bash
 git clone https://github.com/calf-ai/calfkit-broker && cd calfkit-broker && make dev-up
 ```
 
 Once the broker is ready, open a new terminal tab to continue with the quickstart. The default broker address is `localhost:9092`.
+
+</details>
+
+<details>
+<summary><strong>Option B: Calfkit cloud broker</strong></summary>
+
+There's also a [cloud broker](https://github.com/calf-ai/calfkit-sdk?tab=readme-ov-file#%EF%B8%8F-calfkit-cloud-coming-soon) version so you can simply use the cloud broker URL (which would be provided to you) to deploy your agents instead of setting up and maintaining a broker locally.
+
+</details>
 
 <br>
 
