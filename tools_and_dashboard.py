@@ -16,6 +16,7 @@ from trading_tools import (
     execute_trade,
     get_portfolio,
     price_book,
+    risk_state,
     view,
 )
 
@@ -72,7 +73,9 @@ async def main():
     # ── Price subscriber ─────────────────────────────────────────
     @broker.subscriber(PRICE_TOPIC, group_id="tools-dashboard")
     async def handle_price_update(ticker: TickerMessage) -> None:
-        price_book.update(ticker.model_dump())
+        data = ticker.model_dump()
+        price_book.update(data)
+        risk_state.observe(data)
         view.rerender()
 
     print("\nStarting portfolio dashboard (prices via Kafka)...")

@@ -18,7 +18,7 @@
 |------|----------|---------|-------------|
 | `--name` | Yes | - | Agent name (consumer group + identity) |
 | `--chat-node-name` | Yes | - | Name of the deployed ChatNode to target |
-| `--strategy` | Yes | - | Trading strategy: `default`, `momentum`, `brainrot`, or `scalper` |
+| `--strategy` | Yes | - | Trading strategy: `default`, `cutting_edge`, `volatility_managed_momentum`, `intraday_hybrid`, `momentum`, `scalper`, or `brainrot` |
 | `--bootstrap-servers` | Yes | - | Kafka broker address |
 
 ## web_dashboard.py

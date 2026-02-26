@@ -166,6 +166,15 @@ uv run python deploy_chat_node.py \
 
 Deploy one router per agent. Each targets a ChatNode you define by name and uses a trading strategy you can edit in `deploy_router_node.py`. See `deploy_router_node.py` for the full system prompts.
 
+Strategy options include:
+- `default` (regime-adaptive, volatility-managed)
+- `cutting_edge` (research-driven hybrid)
+- `volatility_managed_momentum`
+- `intraday_hybrid`
+- `momentum`, `scalper`, `brainrot`
+
+Research notes behind the strategy updates: `STRATEGY_RESEARCH.md`
+
 ```bash
 uv run python deploy_router_node.py \
     --name <unique-agent-name> --chat-node-name <name-of-chatnode> \
@@ -213,7 +222,7 @@ For full CLI flags and options, see [CLI_REFERENCE.md](CLI_REFERENCE.md).
 
 | Tool | Description |
 |------|-------------|
-| `execute_trade` | Buy or sell a crypto product at the current market price |
+| `execute_trade` | Buy or sell a crypto product at the current market price (with spread/cost and volatility sizing risk checks) |
 | `get_portfolio` | View cash, open positions, cost basis, P&L, and average time held |
 | `calculator` | Evaluate math expressions for position sizing, P&L calculations, etc. |
 

@@ -1,21 +1,9 @@
 """
 Coinbase-to-Kafka connector that streams real-time market data from
-the Coinbase Exchange WebSocket and invokes an AgentRouterNode
-for each price update (fire-and-forget).
+Coinbase and invokes an AgentRouterNode for each market-data batch.
 
-Uses the ticker_batch channel for ~5-second batched price updates.
-
-Usage:
-    uv run python coinbase_kafka_connector.py
-    KAFKA_BOOTSTRAP_SERVERS=broker:9092 \
-        uv run python coinbase_kafka_connector.py
-    uv run python coinbase_kafka_connector.py \
-        --products BTC-USD ETH-USD SOL-USD
-    uv run python coinbase_kafka_connector.py \
-        --min-interval 30
-
-Prerequisites:
-    - Kafka broker running (set KAFKA_BOOTSTRAP_SERVERS env var, default: localhost:9092)
+Publishes raw ticker updates to Kafka topic `market_data.prices` and sends an
+enriched prompt payload (including microstructure fields) to the router.
 """
 
 import argparse
@@ -48,6 +36,7 @@ DEFAULT_PRODUCTS = [
 RECONNECT_DELAY_SECONDS = 3
 
 PRICE_TOPIC = "market_data.prices"
+LEVEL2_DEPTH_LEVELS = 10
 
 
 class TickerMessage(BaseModel):
@@ -71,18 +60,65 @@ class TickerMessage(BaseModel):
     time: str
 
 
+class Level2Book:
+    """Maintains a lightweight in-memory L2 book for a single product."""
+
+    def __init__(self) -> None:
+        self._bids: dict[float, float] = {}
+        self._asks: dict[float, float] = {}
+
+    def apply_snapshot(self, bids: list[list[str]], asks: list[list[str]]) -> None:
+        self._bids.clear()
+        self._asks.clear()
+
+        for level in bids:
+            if len(level) < 2:
+                continue
+            try:
+                price = float(level[0])
+                size = float(level[1])
+            except (TypeError, ValueError):
+                continue
+            if size > 0:
+                self._bids[price] = size
+
+        for level in asks:
+            if len(level) < 2:
+                continue
+            try:
+                price = float(level[0])
+                size = float(level[1])
+            except (TypeError, ValueError):
+                continue
+            if size > 0:
+                self._asks[price] = size
+
+    def apply_changes(self, changes: list[list[str]]) -> None:
+        for change in changes:
+            if len(change) < 3:
+                continue
+            side, price_str, size_str = change[0], change[1], change[2]
+            try:
+                price = float(price_str)
+                size = float(size_str)
+            except (TypeError, ValueError):
+                continue
+            side_book = self._bids if side == "buy" else self._asks
+            if size <= 0:
+                side_book.pop(price, None)
+            else:
+                side_book[price] = size
+
+    def depth(self, side: str, levels: int = LEVEL2_DEPTH_LEVELS) -> float:
+        if side == "buy":
+            prices = sorted(self._bids.keys(), reverse=True)[:levels]
+            return sum(self._bids[p] for p in prices)
+        prices = sorted(self._asks.keys())[:levels]
+        return sum(self._asks[p] for p in prices)
+
+
 class CoinbaseKafkaConnector:
-    """Streams Coinbase ticker data to an AgentRouterNode.
-
-    Connects to the Coinbase Exchange WebSocket ticker_batch channel
-    and invokes the configured AgentRouterNode with each price update
-    using fire-and-forget publishes via RouterServiceClient.
-
-    When min_publish_interval is set, incoming tickers are buffered per
-    product ID. Only the latest data for each product is kept. A product's
-    buffer is flushed once at least min_publish_interval seconds have
-    elapsed since that product's last invocation.
-    """
+    """Streams Coinbase data to an AgentRouterNode."""
 
     def __init__(
         self,
@@ -99,8 +135,10 @@ class CoinbaseKafkaConnector:
         self._running = True
         self._candle_book = candle_book
 
-        # Latest ticker per product — patched on every incoming message
         self._latest: dict[str, TickerMessage] = {}
+        self._l2_books: dict[str, Level2Book] = {}
+        self._ofi_state: dict[str, float] = {}
+        self._depth_imbalance_state: dict[str, float] = {}
 
     async def start(self) -> None:
         """Start the connector. Blocks until shutdown is triggered."""
@@ -141,34 +179,92 @@ class CoinbaseKafkaConnector:
             return
 
         batch = list(self._latest.values())
-        _exclude = {
-            "best_bid_size",
-            "best_ask_size",
-            "last_size",
-            "side",
-            "trade_id",
-            "sequence",
-            "open_24h",
-            "high_24h",
-            "low_24h",
-            "volume_24h",
-            "volume_30d",
-            "time",
-        }
-        batch_json = json.dumps([t.model_dump(exclude=_exclude) for t in batch])
+
+        enriched_batch = []
+        for ticker in batch:
+            product_id = ticker.product_id
+            price = float(ticker.price)
+            best_bid = float(ticker.best_bid)
+            best_ask = float(ticker.best_ask)
+            best_bid_size = float(ticker.best_bid_size)
+            best_ask_size = float(ticker.best_ask_size)
+            spread = max(best_ask - best_bid, 0.0)
+            mid = (best_bid + best_ask) / 2 if (best_bid + best_ask) > 0 else price
+            spread_bps = (spread / mid * 10_000) if mid > 0 else 0.0
+
+            high_24h = float(ticker.high_24h)
+            low_24h = float(ticker.low_24h)
+            range_24h_bps = ((high_24h - low_24h) / price * 10_000) if price > 0 else 0.0
+
+            l2 = self._l2_books.get(product_id)
+            bid_depth_10 = l2.depth("buy", LEVEL2_DEPTH_LEVELS) if l2 is not None else 0.0
+            ask_depth_10 = l2.depth("sell", LEVEL2_DEPTH_LEVELS) if l2 is not None else 0.0
+            total_depth = bid_depth_10 + ask_depth_10
+            depth_imbalance_10 = (
+                (bid_depth_10 - ask_depth_10) / total_depth if total_depth > 0 else 0.0
+            )
+
+            prev_depth_imbalance = self._depth_imbalance_state.get(product_id, 0.0)
+            depth_imbalance_delta = depth_imbalance_10 - prev_depth_imbalance
+            self._depth_imbalance_state[product_id] = depth_imbalance_10
+
+            top_total = best_bid_size + best_ask_size
+            tob_imbalance = (
+                (best_bid_size - best_ask_size) / top_total if top_total > 0 else 0.0
+            )
+
+            signed_trade_size = float(ticker.last_size) * (
+                1.0 if ticker.side == "buy" else (-1.0 if ticker.side == "sell" else 0.0)
+            )
+            trade_pressure = signed_trade_size / max(top_total, 1e-9)
+            ofi_raw = trade_pressure + depth_imbalance_delta
+
+            prev_ofi = self._ofi_state.get(product_id, 0.0)
+            ofi_ema = prev_ofi * 0.8 + ofi_raw * 0.2
+            self._ofi_state[product_id] = ofi_ema
+
+            enriched_batch.append(
+                {
+                    "product_id": product_id,
+                    "price": price,
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "best_bid_size": best_bid_size,
+                    "best_ask_size": best_ask_size,
+                    "spread": spread,
+                    "spread_bps": spread_bps,
+                    "side": ticker.side,
+                    "last_size": float(ticker.last_size),
+                    "high_24h": high_24h,
+                    "low_24h": low_24h,
+                    "range_24h_bps": range_24h_bps,
+                    "volume_24h": float(ticker.volume_24h),
+                    "bid_depth_10": bid_depth_10,
+                    "ask_depth_10": ask_depth_10,
+                    "depth_imbalance_10": depth_imbalance_10,
+                    "depth_imbalance_delta": depth_imbalance_delta,
+                    "tob_imbalance": tob_imbalance,
+                    "ofi_ema": ofi_ema,
+                    "time": ticker.time,
+                }
+            )
+
+        batch_json = json.dumps(enriched_batch)
 
         prompt_parts = [
             "Here is the latest ticker information. You should view your "
             "portfolio first before making any decisions to trade.\n"
             "price = last traded price, best_bid = price you sell at, "
-            "best_ask = price you buy at.\n\n"
+            "best_ask = price you buy at, spread_bps = transaction friction in basis points.\n"
+            "bid_depth_10/ask_depth_10/depth_imbalance_10/ofi_ema are short-horizon "
+            "microstructure signals from level2_batch + ticker flow.\n\n"
             f"{batch_json}",
         ]
 
         if self._candle_book is not None and self._candle_book.has_data():
             prompt_parts.append(
                 "\n## Price History (OHLCV candlesticks)\n"
-                "Below are candlesticks at three granularities — coarser for "
+                "Below are candlesticks at three granularities - coarser for "
                 "broader trend context, finer for recent price action.\n\n"
                 f"{self._candle_book.format_prompt(self._products)}"
             )
@@ -193,21 +289,22 @@ class CoinbaseKafkaConnector:
             await self._publish_latest()
 
     async def _consume_and_publish(self) -> None:
-        """Connect to Coinbase WebSocket and buffer tickers for periodic publish."""
+        """Connect to Coinbase WebSocket and buffer market data for periodic publish."""
         self._latest.clear()
+        self._l2_books.clear()
 
-        async with websockets.connect(COINBASE_WS_URL) as ws:
+        async with websockets.connect(COINBASE_WS_URL, max_size=None) as ws:
             await ws.send(
                 json.dumps(
                     {
                         "type": "subscribe",
                         "product_ids": self._products,
-                        "channels": ["ticker_batch"],
+                        "channels": ["ticker_batch", "level2_batch"],
                     }
                 )
             )
             logger.info(
-                "Subscribed to %d products on ticker_batch: %s",
+                "Subscribed to %d products on ticker_batch + level2_batch: %s",
                 len(self._products),
                 ", ".join(self._products),
             )
@@ -218,8 +315,6 @@ class CoinbaseKafkaConnector:
             if self._candle_book is not None:
                 from coinbase_consumer import PriceBook
 
-                # CandleBook updates are independent; PriceBook updates come
-                # from the WebSocket, so pass a throwaway PriceBook here.
                 candle_task = asyncio.create_task(
                     poll_rest(
                         products=self._products,
@@ -235,18 +330,39 @@ class CoinbaseKafkaConnector:
                         break
 
                     data = json.loads(raw)
-                    if data.get("type") != "ticker":
+                    message_type = data.get("type")
+
+                    if message_type == "ticker":
+                        ticker = TickerMessage.model_validate(data)
+                        self._latest[ticker.product_id] = ticker
+                        await self._broker.publish(ticker, PRICE_TOPIC)
                         continue
 
-                    ticker = TickerMessage.model_validate(data)
-                    self._latest[ticker.product_id] = ticker
-                    await self._broker.publish(ticker, PRICE_TOPIC)
+                    if message_type == "snapshot":
+                        product_id = data.get("product_id")
+                        if product_id not in self._products:
+                            continue
+                        book = self._l2_books.setdefault(product_id, Level2Book())
+                        book.apply_snapshot(data.get("bids", []), data.get("asks", []))
+                        continue
+
+                    if message_type == "l2update":
+                        product_id = data.get("product_id")
+                        if product_id not in self._products:
+                            continue
+                        book = self._l2_books.setdefault(product_id, Level2Book())
+                        book.apply_changes(data.get("changes", []))
+                        continue
+
+                    if message_type == "error":
+                        logger.warning("Coinbase WS error: %s", data.get("message", data))
             finally:
                 flush_task.cancel()
                 try:
                     await flush_task
                 except asyncio.CancelledError:
                     pass
+
                 if candle_task is not None:
                     candle_task.cancel()
                     try:
@@ -318,7 +434,7 @@ def main() -> None:
     args = parse_args()
     logging.basicConfig(
         level=getattr(logging, args.log_level),
-        format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+        format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
         datefmt="%H:%M:%S",
     )
 

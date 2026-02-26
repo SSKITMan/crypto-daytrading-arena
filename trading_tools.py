@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import time
 import typing
@@ -50,6 +51,19 @@ logger = logging.getLogger(__name__)
 INITIAL_CASH = 100_000.0
 
 MAX_BALANCE_HISTORY = 300  # ~25 min at 5s intervals
+
+VOL_WINDOW = 60
+MIN_VOL_OBS = 12
+VOL_TARGET_BPS = 35.0
+MIN_TRADE_FRACTION = 0.03
+MAX_TRADE_FRACTION = 0.18
+DEFAULT_TRADE_FRACTION = 0.08
+LOW_VOL_BPS = 15.0
+HIGH_VOL_BPS = 60.0
+LOW_VOL_GROSS_CAP = 0.85
+HIGH_VOL_GROSS_CAP = 0.65
+BASE_SPREAD_BPS_LIMIT = 6.0
+MAX_SPREAD_BPS_LIMIT = 28.0
 
 AGENT_COLORS: dict[str, str] = {
     "momentum": "cyan",
@@ -94,16 +108,77 @@ class AgentAccount:
         return self.cost_basis.get(product_id, 0.0) / qty
 
 
+class MarketRiskState:
+    """Tracks recent price history and provides simple risk controls."""
+
+    def __init__(self) -> None:
+        self._price_history: dict[str, deque[float]] = {}
+
+    def observe(self, ticker: dict) -> None:
+        product_id = str(ticker.get("product_id", "")).upper().strip()
+        if not product_id:
+            return
+        try:
+            price = float(ticker.get("price", 0))
+        except (TypeError, ValueError):
+            return
+        if price <= 0:
+            return
+        if product_id not in self._price_history:
+            self._price_history[product_id] = deque(maxlen=VOL_WINDOW)
+        self._price_history[product_id].append(price)
+
+    def realized_vol_bps(self, product_id: str) -> float | None:
+        history = self._price_history.get(product_id.upper().strip())
+        if history is None or len(history) < MIN_VOL_OBS:
+            return None
+        values = list(history)
+        log_returns: list[float] = []
+        for i in range(1, len(values)):
+            prev = values[i - 1]
+            curr = values[i]
+            if prev <= 0 or curr <= 0:
+                continue
+            log_returns.append(math.log(curr / prev))
+        if len(log_returns) < 2:
+            return None
+        mean = sum(log_returns) / len(log_returns)
+        variance = sum((r - mean) ** 2 for r in log_returns) / (len(log_returns) - 1)
+        return math.sqrt(variance) * 10_000
+
+    def max_trade_fraction(self, vol_bps: float | None) -> float:
+        if vol_bps is None:
+            return DEFAULT_TRADE_FRACTION
+        raw = DEFAULT_TRADE_FRACTION * (VOL_TARGET_BPS / max(vol_bps, 10.0))
+        return max(MIN_TRADE_FRACTION, min(MAX_TRADE_FRACTION, raw))
+
+    def max_gross_exposure_fraction(self, vol_bps: float | None) -> float:
+        if vol_bps is None:
+            return 0.75
+        if vol_bps <= LOW_VOL_BPS:
+            return LOW_VOL_GROSS_CAP
+        if vol_bps >= HIGH_VOL_BPS:
+            return HIGH_VOL_GROSS_CAP
+        slope = (vol_bps - LOW_VOL_BPS) / (HIGH_VOL_BPS - LOW_VOL_BPS)
+        return LOW_VOL_GROSS_CAP - slope * (LOW_VOL_GROSS_CAP - HIGH_VOL_GROSS_CAP)
+
+    def max_spread_bps(self, vol_bps: float | None) -> float:
+        if vol_bps is None:
+            return 12.0
+        return min(MAX_SPREAD_BPS_LIMIT, BASE_SPREAD_BPS_LIMIT + 0.35 * vol_bps)
+
+
 # ── Account store ────────────────────────────────────────────────
 
 
 class AccountStore:
     """In-memory trading account store, keyed by agent_id."""
 
-    def __init__(self, price_book: PriceBook) -> None:
+    def __init__(self, price_book: PriceBook, risk_state: MarketRiskState) -> None:
         self._accounts: dict[str, AgentAccount] = {}
         self._trade_log: list[tuple[str, str, str, str, float, float, float | None]] = []
         self._price_book = price_book
+        self._risk_state = risk_state
 
     def get_or_create(self, agent_id: str) -> AgentAccount:
         if agent_id not in self._accounts:
@@ -156,10 +231,50 @@ class AccountStore:
         quantity = rounded
 
         account = self.get_or_create(agent_id)
+        best_bid = float(entry["best_bid"])
+        best_ask = float(entry["best_ask"])
+        mid = (best_bid + best_ask) / 2 if (best_bid + best_ask) > 0 else float(entry["price"])
+        spread_bps = ((best_ask - best_bid) / mid * 10_000) if mid > 0 else 0.0
+        vol_bps = self._risk_state.realized_vol_bps(product_id)
+        vol_label = f"{vol_bps:.1f}" if vol_bps is not None else "n/a"
 
         if action == "buy":
-            price = float(entry["best_ask"])
+            price = best_ask
             cost = price * quantity
+            spread_limit_bps = self._risk_state.max_spread_bps(vol_bps)
+            if spread_bps > spread_limit_bps:
+                return TradeResult(
+                    False,
+                    "Trade rejected by cost gate. "
+                    f"Spread {spread_bps:.2f} bps is above allowed {spread_limit_bps:.2f} bps "
+                    f"(vol={vol_label} bps).",
+                )
+
+            portfolio_value = account.portfolio_value(self._price_book)
+            max_trade_fraction = self._risk_state.max_trade_fraction(vol_bps)
+            max_trade_notional = portfolio_value * max_trade_fraction
+            if cost > max_trade_notional:
+                max_qty = max(round(max_trade_notional / price, 1), 0.0)
+                return TradeResult(
+                    False,
+                    "Trade rejected by volatility sizing. "
+                    f"Requested notional ${cost:,.2f} > max ${max_trade_notional:,.2f} "
+                    f"(vol={vol_label} bps). Suggested qty <= {max_qty:g}.",
+                )
+
+            invested_value = max(portfolio_value - account.cash, 0.0)
+            gross_cap_fraction = self._risk_state.max_gross_exposure_fraction(vol_bps)
+            gross_cap_value = portfolio_value * gross_cap_fraction
+            if invested_value + cost > gross_cap_value:
+                headroom = max(gross_cap_value - invested_value, 0.0)
+                max_qty = max(round(headroom / price, 1), 0.0)
+                return TradeResult(
+                    False,
+                    "Trade rejected by gross exposure cap. "
+                    f"Gross exposure would exceed {gross_cap_fraction*100:.1f}% of portfolio "
+                    f"(vol={vol_label} bps). Suggested qty <= {max_qty:g}.",
+                )
+
             if cost > account.cash:
                 return TradeResult(
                     False,
@@ -183,7 +298,7 @@ class AccountStore:
             )
 
         # sell
-        price = float(entry["best_bid"])
+        price = best_bid
         held = account.positions.get(product_id, 0)
         if quantity > held:
             return TradeResult(
@@ -218,7 +333,7 @@ class AccountStore:
         agent_id: str,
         action: str,
         product_id: str,
-        quantity: int,
+        quantity: float,
         price: float,
         latency: float | None = None,
     ) -> None:
@@ -501,7 +616,8 @@ class PortfolioView:
 # ── Module-level singletons ──────────────────────────────────────
 
 price_book = PriceBook()
-store = AccountStore(price_book)
+risk_state = MarketRiskState()
+store = AccountStore(price_book, risk_state)
 view = PortfolioView(store)
 
 
@@ -664,7 +780,9 @@ async def main() -> None:
 
     @broker.subscriber(PRICE_TOPIC, group_id="tools-dashboard")
     async def handle_price_update(ticker: TickerMessage) -> None:
-        price_book.update(ticker.model_dump())
+        data = ticker.model_dump()
+        price_book.update(data)
+        risk_state.observe(data)
         view.rerender()
 
     print("\nStarting portfolio dashboard (prices via Kafka)...")
@@ -679,3 +797,4 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+
