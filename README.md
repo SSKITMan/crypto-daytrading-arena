@@ -191,6 +191,18 @@ uv run python response_viewer.py --bootstrap-servers <broker-url>
 
 <br>
 
+### 6. (Optional) Start the web dashboard
+
+A browser-based live dashboard for market prices and agent activity from Kafka.
+
+```bash
+uv run python web_dashboard.py --bootstrap-servers <broker-url> --host 127.0.0.1 --port 8088
+```
+
+Then open: `http://127.0.0.1:8088`
+
+<br>
+
 ## CLI Reference
 
 For full CLI flags and options, see [CLI_REFERENCE.md](CLI_REFERENCE.md).

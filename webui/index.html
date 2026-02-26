@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Arena Control Deck</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-orb bg-orb-a"></div>
+  <div class="bg-orb bg-orb-b"></div>
+
+  <main class="page">
+    <header class="hero reveal">
+      <p class="eyebrow">Crypto Daytrading Arena</p>
+      <h1>Arena Control Deck</h1>
+      <p class="subtitle">Live market pulse, agent behavior, and execution flow from Kafka.</p>
+      <div class="status-row">
+        <span id="kafkaPill" class="pill pill-off">Kafka: disconnected</span>
+        <span class="meta">Messages seen: <strong id="messagesSeen">0</strong></span>
+        <span class="meta">Uptime: <strong id="uptime">0s</strong></span>
+      </div>
+    </header>
+
+    <section class="panel reveal delay-1">
+      <div class="panel-head">
+        <h2>Market Pulse</h2>
+        <span class="hint">Topic: market_data.prices</span>
+      </div>
+      <div id="marketGrid" class="market-grid"></div>
+    </section>
+
+    <section class="panel reveal delay-2">
+      <div class="panel-head">
+        <h2>Live Position Cards</h2>
+        <span class="hint">Coin value and unrealized PnL</span>
+      </div>
+      <div id="portfolioCards" class="portfolio-grid"></div>
+    </section>
+
+    <section class="panel reveal delay-2">
+      <div class="panel-head">
+        <h2>Agent Heatboard</h2>
+        <span class="hint">Topic: agent_router.output</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Agent</th>
+              <th>Events</th>
+              <th>Tool Calls</th>
+              <th>Trade Attempts</th>
+              <th>Last Seen</th>
+              <th>Last Event</th>
+            </tr>
+          </thead>
+          <tbody id="agentRows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel reveal delay-3">
+      <div class="panel-head">
+        <h2>Live Tape</h2>
+        <span class="hint">Newest first</span>
+      </div>
+      <div id="eventFeed" class="event-feed"></div>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
