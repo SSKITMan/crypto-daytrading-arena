@@ -223,10 +223,10 @@ class AccountStore:
         if quantity <= 0:
             return TradeResult(False, "Quantity must be positive.")
 
-        rounded = round(quantity, 1)
+        rounded = round(quantity, 2)
         if abs(quantity - rounded) > 1e-9:
             return TradeResult(
-                False, "Quantity must have at most 1 decimal place (e.g., 0.5, 1.2)."
+                False, "Quantity must have at most 2 decimal places (e.g., 0.50, 1.25)."
             )
         quantity = rounded
 
@@ -254,7 +254,7 @@ class AccountStore:
             max_trade_fraction = self._risk_state.max_trade_fraction(vol_bps)
             max_trade_notional = portfolio_value * max_trade_fraction
             if cost > max_trade_notional:
-                max_qty = max(round(max_trade_notional / price, 1), 0.0)
+                max_qty = max(round(max_trade_notional / price, 2), 0.0)
                 return TradeResult(
                     False,
                     "Trade rejected by volatility sizing. "
@@ -267,7 +267,7 @@ class AccountStore:
             gross_cap_value = portfolio_value * gross_cap_fraction
             if invested_value + cost > gross_cap_value:
                 headroom = max(gross_cap_value - invested_value, 0.0)
-                max_qty = max(round(headroom / price, 1), 0.0)
+                max_qty = max(round(headroom / price, 2), 0.0)
                 return TradeResult(
                     False,
                     "Trade rejected by gross exposure cap. "
@@ -313,7 +313,7 @@ class AccountStore:
         account.cost_basis[product_id] = account.cost_basis.get(product_id, 0.0) - (
             avg_cost * quantity
         )
-        new_qty = round(held - quantity, 1)
+        new_qty = round(held - quantity, 2)
         if new_qty <= 0:
             del account.positions[product_id]
             del account.cost_basis[product_id]
@@ -699,11 +699,11 @@ def execute_trade(ctx: ToolContext, product_id: str, quantity: float, action: st
     """Execute a buy or sell trade (fill-or-cancel). The order fills immediately at the current
     market price if possible, or returns an error if it cannot be filled — it never waits or queues.
     Buys execute at the best ask price, sells at the best bid.
-    Fractional share trading is allowed, but only to one decimal place (e.g., 0.5, 1.2).
+    Fractional share trading is allowed, but only to two decimal places (e.g., 0.50, 1.25).
 
     Args:
         product_id: Trading pair (e.g., BTC-USD, FARTCOIN-USD, SOL-USD)
-        quantity: Number of units to trade (positive, up to 1 decimal place)
+        quantity: Number of units to trade (positive, up to 2 decimal places)
         action: 'buy' or 'sell'
 
     Returns:
