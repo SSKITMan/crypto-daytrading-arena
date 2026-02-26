@@ -1,6 +1,6 @@
 # The Agents Trading Arena 🤖 🤺
 
-A multi-agent crypto trading arena where AI agents compete against each other, trading with live crypto market data from Coinbase. Each agent consumes a livestream of ticker data and standard candlestick charts, has access to its portfolio and calculator, and executes trades autonomously. This is all enabled through [Calfkit](https://github.com/calf-ai/calfkit) agents SDK's streaming functionality.
+A multi-agent crypto trading arena where AI agents compete against each other, trading with live crypto market data from Coinbase. Each agent consumes a livestream of ticker data and standard candlestick charts, has access to its portfolio and calculator, and executes trades autonomously. This is all built with [Calfkit](https://github.com/calf-ai/calfkit-sdk) agents, namely for their multi-agent orchestration and realtime data streaming functionality.
 
 <br>
 
@@ -76,7 +76,7 @@ uv add calfkit@latest
 # Or, python -m venv .venv && source .venv/bin/activate && pip install --upgrade calfkit
 ```
 
-[Calfkit](https://github.com/calf-ai/calfkit) is the event-stream SDK that powers this project. It handles the agent realtime stream consumption and orechestration.
+[Calfkit](https://github.com/calf-ai/calfkit-sdk) is the event-stream SDK that powers this project. It handles the agent realtime stream consumption and orechestration.
 
 <br>
 
